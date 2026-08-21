@@ -135,6 +135,87 @@ app.get("/api/leads", async (req, res) => {
   }
 });
 
+//update lead
+
+async function updateLead(leadId, updatedData) {
+  try {
+    const updatedLead = await Lead.findByIdAndUpdate(
+      leadId,
+      updatedData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return updatedLead;
+  } catch (error) {
+    console.log("Failed to update Lead:", error);
+    throw error;
+  }
+}
+
+//put api
+
+app.put("/leads/:id", async (req, res) => {
+  try {
+    const updatedLead = await updateLead(
+      req.params.id,
+      req.body
+    );
+
+    if (!updatedLead) {
+      return res.status(404).json({
+        error: "Lead not found",
+      });
+    }
+
+    res.status(200).json({
+      message: "Lead updated successfully",
+      lead: updatedLead,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to update Lead",
+    });
+  }
+});
+
+//delete
+
+async function deleteLead(leadId) {
+  try {
+    const deletedLead = await Lead.findByIdAndDelete(leadId);
+
+    return deletedLead;
+  } catch (error) {
+    console.log("Failed to delete lead:", error);
+    throw error;
+  }
+}
+
+//delete api
+app.delete("/leads/:id", async (req, res) => {
+  try {
+    const deletedLead = await deleteLead(req.params.id);
+
+    if (!deletedLead) {
+      return res.status(404).json({
+        error: "Lead not found",
+      });
+    }
+
+    res.status(200).json({
+      message: "Lead deleted successfully",
+      lead: deletedLead,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to delete lead",
+    });
+  }
+});
+
 const PORT= 3000;
 app.listen(PORT,()=>{
     console.log(`Server Started on ${PORT}`);
