@@ -216,6 +216,102 @@ app.delete("/leads/:id", async (req, res) => {
   }
 });
 
+//comment api
+
+async function createComment(leadId, newComment) {
+  try {
+    const comment = new Comment({
+      lead: leadId,
+      author: newComment.author,
+      commentText: newComment.commentText
+    });
+
+    const savedComment = await comment.save();
+
+    return savedComment;
+  } catch (error) {
+    throw error;
+  }
+}
+
+//post api
+
+app.post("/api/leads/:id/comments", async (req, res) => {
+  try {
+    const leadId = req.params.id;
+
+    // Check whether lead exists
+    const lead = await Lead.findById(leadId);
+
+    if (!lead) {
+      return res.status(404).json({
+        error: `Lead with ID '${leadId}' not found.`
+      });
+    }
+
+    const savedComment = await createComment(leadId, req.body);
+
+    res.status(201).json({
+      id: savedComment._id,
+      commentText: savedComment.commentText,
+      author: savedComment.author,
+      createdAt: savedComment.createdAt
+    });
+
+  } catch (error) {
+    console.log("Failed to add comment", error);
+
+    res.status(500).json({
+      error: "Failed to add comment."
+    });
+  }
+});
+
+//get comment method and api
+
+async function getCommentsByLead(leadId) {
+  try {
+    const comments = await Comment.find({ lead: leadId })
+      .populate("author", "name")
+      .sort({ createdAt: 1 });
+
+    return comments;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/leads/:id/comments", async (req, res) => {
+  try {
+    const leadId = req.params.id;
+    const lead = await Lead.findById(leadId);
+
+    if (!lead) {
+      return res.status(404).json({
+        error: `Lead with ID '${leadId}' not found.`
+      });
+    }
+
+    const comments = await getCommentsByLead(leadId);
+
+    const result = comments.map((comment) => ({
+      id: comment._id,
+      commentText: comment.commentText,
+      author: comment.author.name,
+      createdAt: comment.createdAt
+    }));
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log("Failed to fetch comments", error);
+
+    res.status(500).json({
+      error: "Failed to fetch comments."
+    });
+  }
+});
+
 const PORT= 3000;
 app.listen(PORT,()=>{
     console.log(`Server Started on ${PORT}`);
