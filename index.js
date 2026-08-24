@@ -312,6 +312,83 @@ app.get("/api/leads/:id/comments", async (req, res) => {
   }
 });
 
+//report method and api
+
+async function getLeadsClosedLastWeek() {
+  try {
+    const sevenDaysAgo = new Date();
+
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const leads = await Lead.find({
+      status: "Closed",
+      closedAt: {
+        $gte: sevenDaysAgo
+      }
+    }).populate("salesAgent", "name");
+
+    return leads;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/report/last-week", async (req, res) => {
+  try {
+    const leads = await getLeadsClosedLastWeek();
+
+    const result = leads.map((lead) => ({
+      id: lead._id,
+      name: lead.name,
+      salesAgent: lead.salesAgent
+        ? lead.salesAgent.name
+        : "Unknown",
+      closedAt: lead.closedAt
+    }));
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log("Failed to fetch leads closed last week", error);
+
+    res.status(500).json({
+      error: "Failed to fetch leads closed last week."
+    });
+  }
+});
+
+//Get Total Leads in Pipeline
+
+async function getTotalLeadsInPipeline() {
+  try {
+    const totalLeadsInPipeline = await Lead.countDocuments({
+      status: { $ne: "Closed" }
+    });
+
+    return totalLeadsInPipeline;
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/pipeline", async (req, res) => {
+  try {
+    const totalLeadsInPipeline = await getTotalLeadsInPipeline();
+
+    res.status(200).json({
+      totalLeadsInPipeline
+    });
+
+  } catch (error) {
+    console.log("Failed to fetch pipeline report", error);
+
+    res.status(500).json({
+      error: "Failed to fetch pipeline report."
+    });
+  }
+});
+
 const PORT= 3000;
 app.listen(PORT,()=>{
     console.log(`Server Started on ${PORT}`);
