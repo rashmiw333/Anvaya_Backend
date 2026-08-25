@@ -49,7 +49,7 @@ async function readAllAgents() {
   }
 }
 
-// call to get all receipe
+// call to get all
 
 app.get("/api/agents", async (req, res) => {
   try {
@@ -65,22 +65,6 @@ app.get("/api/agents", async (req, res) => {
   }
 });
 
-// Methods and Apis for leads
-
-// POST   /leads
-// GET    /leads
-// PATCH  /leads/:id
-// DELETE /leads/:id
-
-// {
-//   "name": "Acme Corp",
-//   "source": "Referral",
-//   "salesAgent": "SALES_AGENT_ID",
-//   "status": "New",
-//   "tags": ["High Value", "Follow-up"],
-//   "timeToClose": 30,
-//   "priority": "High"
-// }
 
 //method to create lead
 
@@ -119,7 +103,7 @@ async function readAllLeads() {
   }
 }
 
-// call to get all receipe
+// call to get all leads
 
 app.get("/api/leads", async (req, res) => {
   try {
@@ -132,6 +116,41 @@ app.get("/api/leads", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({error: "Error occurred while fetching Leads."});
+  }
+});
+
+//get api for getting lead by id
+
+async function readLeadById(leadId) {
+  try {
+    const lead = await Lead.findById(leadId)
+      .populate("salesAgent", "name");
+
+    return lead;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/leads/:id", async (req, res) => {
+  try {
+
+    const lead = await readLeadById(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({
+        error: "Lead not found."
+      });
+    }
+
+    res.status(200).json(lead);
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: "Failed to fetch lead."
+    });
+
   }
 });
 
@@ -157,7 +176,7 @@ async function updateLead(leadId, updatedData) {
 
 //put api
 
-app.put("/leads/:id", async (req, res) => {
+app.put("/api/leads/:id", async (req, res) => {
   try {
     const updatedLead = await updateLead(
       req.params.id,
@@ -297,7 +316,7 @@ app.get("/api/leads/:id/comments", async (req, res) => {
     const result = comments.map((comment) => ({
       id: comment._id,
       commentText: comment.commentText,
-      author: comment.author.name,
+      author: comment.author?.name || "Unknown",
       createdAt: comment.createdAt
     }));
 
