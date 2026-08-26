@@ -96,7 +96,7 @@ app.post("/api/leads",async(req,res)=>{
 
 async function readAllLeads() {
   try {
-    const leads = await Lead.find();
+    const leads = await Lead.find().populate("salesAgent", "name");;
     return leads;
   } catch (error) {
     throw error;
