@@ -408,6 +408,132 @@ app.get("/api/report/pipeline", async (req, res) => {
   }
 });
 
+// Get Total Closed Leads method and api changes
+
+async function getTotalClosedLeads() {
+  try {
+    const totalClosedLeads = await Lead.countDocuments({
+      status: "Closed"
+    });
+
+    return totalClosedLeads;
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/closed", async (req, res) => {
+  try {
+    const totalClosedLeads = await getTotalClosedLeads();
+
+    res.status(200).json({
+      totalClosedLeads
+    });
+
+  } catch (error) {
+    console.log("Failed to fetch closed leads", error);
+
+    res.status(500).json({
+      error: "Failed to fetch closed leads."
+    });
+  }
+});
+
+// Get Leads Closed by Sales Agent -> method and api
+
+async function getLeadsClosedBySalesAgent() {
+  try {
+    const leads = await Lead.find({
+      status: "Closed"
+    }).populate("salesAgent", "name");
+
+    const result = {};
+
+    leads.forEach((lead) => {
+
+      const agentName = lead.salesAgent
+        ? lead.salesAgent.name
+        : "Unknown";
+
+      if (result[agentName]) {
+        result[agentName] += 1;
+      } else {
+        result[agentName] = 1;
+      }
+
+    });
+
+    return result;
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/closed-by-agent", async (req, res) => {
+  try {
+    const result = await getLeadsClosedBySalesAgent();
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log(
+      "Failed to fetch leads closed by sales agent",
+      error
+    );
+
+    res.status(500).json({
+      error: "Failed to fetch leads closed by sales agent."
+    });
+  }
+});
+
+// Get Lead Status Distribution -> method + api changes
+
+async function getLeadStatusDistribution() {
+  try {
+    const leads = await Lead.find();
+
+    const result = {};
+
+    leads.forEach((lead) => {
+
+      if (result[lead.status]) {
+        result[lead.status] += 1;
+      } else {
+        result[lead.status] = 1;
+      }
+
+    });
+
+    return result;
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/status-distribution", async (req, res) => {
+  try {
+    const result = await getLeadStatusDistribution();
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log(
+      "Failed to fetch lead status distribution",
+      error
+    );
+
+    res.status(500).json({
+      error: "Failed to fetch lead status distribution."
+    });
+  }
+});
+
 const PORT= 3000;
 app.listen(PORT,()=>{
     console.log(`Server Started on ${PORT}`);
