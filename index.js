@@ -21,6 +21,7 @@ async function createAgent(newAgent){
         return savedAgent;
     }catch(error){
         console.log("Failed to add Agent",error);
+        throw error;
     }
 
 }
@@ -28,15 +29,35 @@ async function createAgent(newAgent){
 //post api
 
 app.post("/api/agents",async(req,res)=>{
-    try{
-      const savedAgent = await createAgent(req.body);
-      res.status(201).json({message:"Agent added Successfully."});
-       }catch(error){
-        res.status(500).json({
-            error:"Failed to add Agent."
-        });
+    try {
+    const existingAgent = await SalesAgent.findOne({
+      email: req.body.email
+    });
+
+    if (existingAgent) {
+      return res.status(400).json({
+        error: "Email already exists."
+      });
     }
+
+    const agent = new SalesAgent(req.body);
+
+    const savedAgent = await agent.save();
+
+    return res.status(201).json({
+      message: "Agent added Successfully.",
+      agent: savedAgent
+    });
+  } catch (error) {
+    console.log("Error creating agent:", error);
+
+    return res.status(500).json({
+      error: "Failed to add Agent."
+    });
+  }
 });
+
+
 
 //read agents data
 
