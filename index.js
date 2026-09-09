@@ -105,7 +105,7 @@ async function createLead(newLead){
 app.post("/api/leads",async(req,res)=>{
     try{
       const savedLead = await createLead(req.body);
-      res.status(201).json({message:"Lead added Successfully."});
+      res.status(201).json({message:"Lead added Successfully.",savedLead});
        }catch(error){
         res.status(500).json({
             error:"Failed to add Lead."
@@ -291,10 +291,13 @@ app.post("/api/leads/:id/comments", async (req, res) => {
 
     const savedComment = await createComment(leadId, req.body);
 
+     // Get the agent name
+    await savedComment.populate("author", "name");
+
     res.status(201).json({
       id: savedComment._id,
       commentText: savedComment.commentText,
-      author: savedComment.author,
+      author: savedComment.author?.name || "Unknown",
       createdAt: savedComment.createdAt
     });
 
