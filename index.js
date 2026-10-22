@@ -243,6 +243,413 @@ app.get("/projects", verifyJWT, async (req, res) => {
   }
 });
 
+// ==================== TAG APIs ====================
 
+async function createTag(newTag) {
+  const tag = new Tag(newTag);
+  return await tag.save();
+}
+
+app.post("/tags", verifyJWT, async (req, res) => {
+  try {
+    if (!req.body.name) {
+      return res.status(400).json({ message: "Tag name is required." });
+    }
+
+    const existingTag = await Tag.findOne({
+      name: req.body.name.trim(),
+    });
+
+    if (existingTag) {
+      return res.status(409).json({ message: "Tag already exists." });
+    }
+
+    const tag = await createTag(req.body);
+
+    res.status(201).json({
+      message: "Tag created successfully.",
+      tag,
+    });
+  } catch (error) {
+    console.log("Create tag error:", error);
+    res.status(500).json({ message: "Failed to create tag." });
+  }
+});
+
+async function readAllTags() {
+  return await Tag.find().sort({ name: 1 });
+}
+
+app.get("/tags", verifyJWT, async (req, res) => {
+  try {
+    res.status(200).json(await readAllTags());
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch tags." });
+  }
+});
+
+// ==================== TASK APIs ====================
+
+async function createTask(newTask) {
+  const task = new Task(newTask);
+  return await task.save();
+}
+
+app.post("/tasks", verifyJWT, async (req, res) => {
+  try {
+    const {
+      name, project, team, owners = [], tags = [],
+      timeToComplete, dueDate, status, priority,
+    } = req.body;
+
+    if (!name || !project || !team || timeToComplete == null) {
+      return res.status(400).json({
+        message: "Name, project, team and timeToComplete are required.",
+      });
+    }
+
+    if (!Number.isFinite(Number(timeToComplete)) || Number(timeToComplete) < 1) {
+      return res.status(400).json({
+        message: "timeToComplete must be at least 1.",
+      });
+    }
+
+    if (!mongoose.isValidObjectId(project) ||
+        !mongoose.isValidObjectId(team)) {
+      return res.status(400).json({
+        message: "Invalid project or team ID.",
+      });
+    }
+
+    const [projectExists, teamExists] = await Promise.all([
+      Project.exists({ _id: project }),
+      Team.exists({ _id: team }),
+    ]);
+
+    if (!projectExists || !teamExists) {
+      return res.status(400).json({
+        message: "Project or team does not exist.",
+      });
+    }
+
+    const validOwners = owners.every(mongoose.isValidObjectId);
+    const validTags = tags.every(mongoose.isValidObjectId);
+
+    if (!validOwners || !validTags) {
+      return res.status(400).json({
+        message: "Invalid owner or tag ID.",
+      });
+    }
+
+    const task = await createTask({
+      name,
+      project,
+      team,
+      owners,
+      tags,
+      timeToComplete: Number(timeToComplete),
+      dueDate,
+      status,
+      priority,
+      completedAt: status === "Completed" ? new Date() : null,
+      createdBy: req.user.userId,
+    });
+
+    const savedTask = await Task.findById(task._id)
+      .populate("project", "name")
+      .populate("team", "name")
+      .populate("owners", "name email")
+      .populate("tags", "name");
+
+    res.status(201).json({
+      message: "Task created successfully.",
+      task: savedTask,
+    });
+  } catch (error) {
+    console.log("Create task error:", error);
+    res.status(500).json({ message: "Failed to create task." });
+  }
+});
+
+// Read tasks and filter using query parameters
+async function readAllTasks(query) {
+  const filter = {};
+
+  if (query.status) filter.status = query.status;
+  if (query.priority) filter.priority = query.priority;
+
+  if (query.team) {
+    if (mongoose.isValidObjectId(query.team)) {
+      filter.team = query.team;
+    } else {
+      const team = await Team.findOne({ name: query.team });
+      filter.team = team ? team._id : null;
+    }
+  }
+
+  if (query.project) {
+    if (mongoose.isValidObjectId(query.project)) {
+      filter.project = query.project;
+    } else {
+      const project = await Project.findOne({ name: query.project });
+      filter.project = project ? project._id : null;
+    }
+  }
+
+  if (query.owner) {
+    if (mongoose.isValidObjectId(query.owner)) {
+      filter.owners = query.owner;
+    } else {
+      const owner = await User.findOne({ name: query.owner });
+      filter.owners = owner ? owner._id : null;
+    }
+  }
+
+  if (query.tags) {
+    const tagNames = query.tags.split(",").map((tag) => tag.trim());
+    const tags = await Tag.find({ name: { $in: tagNames } });
+    filter.tags = { $in: tags.map((tag) => tag._id) };
+  }
+
+  let sortOption = { createdAt: -1 };
+
+  if (query.sort === "dueDate") sortOption = { dueDate: 1 };
+  if (query.sort === "priority") sortOption = { priority: -1 };
+
+  return await Task.find(filter)
+    .populate("project", "name")
+    .populate("team", "name")
+    .populate("owners", "name email")
+    .populate("tags", "name")
+    .sort(sortOption);
+}
+
+app.get("/tasks", verifyJWT, async (req, res) => {
+  try {
+    const tasks = await readAllTasks(req.query);
+    res.status(200).json(tasks);
+  } catch (error) {
+    console.log("Fetch tasks error:", error);
+    res.status(500).json({ message: "Failed to fetch tasks." });
+  }
+});
+
+// Read task by ID
+app.get("/tasks/:id", verifyJWT, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid task ID." });
+    }
+
+    const task = await Task.findById(req.params.id)
+      .populate("project", "name")
+      .populate("team", "name")
+      .populate("owners", "name email")
+      .populate("tags", "name");
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch task." });
+  }
+});
+
+// Update task
+async function updateTask(taskId, updatedData) {
+  const allowedFields = [
+    "name", "project", "team", "owners", "tags",
+    "timeToComplete", "dueDate", "status", "priority",
+  ];
+
+  const updates = {};
+
+  allowedFields.forEach((field) => {
+    if (updatedData[field] !== undefined) {
+      updates[field] = updatedData[field];
+    }
+  });
+
+  if (updates.status === "Completed") {
+    updates.completedAt = new Date();
+  } else if (updates.status) {
+    updates.completedAt = null;
+  }
+
+  return await Task.findByIdAndUpdate(taskId, updates, {
+    new: true,
+    runValidators: true,
+  })
+    .populate("project", "name")
+    .populate("team", "name")
+    .populate("owners", "name email")
+    .populate("tags", "name");
+}
+
+app.put("/tasks/:id", verifyJWT, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid task ID." });
+    }
+
+    const task = await updateTask(req.params.id, req.body);
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    res.json({ message: "Task updated successfully.", task });
+  } catch (error) {
+    console.log("Update task error:", error);
+    res.status(500).json({ message: "Failed to update task." });
+  }
+});
+
+// Delete task
+async function deleteTask(taskId) {
+  return await Task.findByIdAndDelete(taskId);
+}
+
+app.delete("/tasks/:id", verifyJWT, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid task ID." });
+    }
+
+    const task = await deleteTask(req.params.id);
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    res.json({ message: "Task deleted successfully.", task });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete task." });
+  }
+});
+
+// ==================== REPORT APIs ====================
+
+// Tasks completed during the last 7 days
+async function getTasksCompletedLastWeek() {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  return await Task.find({
+    status: "Completed",
+    completedAt: { $gte: sevenDaysAgo },
+  })
+    .populate("team", "name")
+    .populate("project", "name")
+    .populate("owners", "name");
+}
+
+app.get("/report/last-week", verifyJWT, async (req, res) => {
+  try {
+    const tasks = await getTasksCompletedLastWeek();
+
+    res.json({
+      totalCompleted: tasks.length,
+      tasks,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch last-week report.",
+    });
+  }
+});
+
+// Sum of estimated days for tasks not completed
+async function getTotalPendingDays() {
+  const result = await Task.aggregate([
+    { $match: { status: { $ne: "Completed" } } },
+    {
+      $group: {
+        _id: null,
+        totalPendingDays: { $sum: "$timeToComplete" },
+        totalPendingTasks: { $sum: 1 },
+      },
+    },
+  ]);
+
+  return result[0] || {
+    totalPendingDays: 0,
+    totalPendingTasks: 0,
+  };
+}
+
+app.get("/report/pending", verifyJWT, async (req, res) => {
+  try {
+    res.json(await getTotalPendingDays());
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch pending report.",
+    });
+  }
+});
+
+// Completed tasks grouped by team, owner and project
+async function getClosedTaskReport() {
+  const tasks = await Task.find({ status: "Completed" })
+    .populate("team", "name")
+    .populate("project", "name")
+    .populate("owners", "name");
+
+  const result = {
+    totalClosedTasks: tasks.length,
+    byTeam: {},
+    byOwner: {},
+    byProject: {},
+  };
+
+  tasks.forEach((task) => {
+    const teamName = task.team?.name || "Unknown";
+    const projectName = task.project?.name || "Unknown";
+
+    result.byTeam[teamName] = (result.byTeam[teamName] || 0) + 1;
+    result.byProject[projectName] =
+      (result.byProject[projectName] || 0) + 1;
+
+    task.owners.forEach((owner) => {
+      result.byOwner[owner.name] =
+        (result.byOwner[owner.name] || 0) + 1;
+    });
+  });
+
+  return result;
+}
+
+app.get("/report/closed-tasks", verifyJWT, async (req, res) => {
+  try {
+    res.json(await getClosedTaskReport());
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch closed-task report.",
+    });
+  }
+});
+
+// ==================== START SERVER ====================
+
+const PORT = process.env.PORT || 5000;
+
+async function startServer() {
+  try {
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET is missing from .env");
+    }
+
+    await initializeDatabase();
+
+    app.listen(PORT, () => {
+      console.log(`Workasana server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.log("Server startup error:", error.message);
+    process.exit(1);
+  }
+}
 
 startServer();
