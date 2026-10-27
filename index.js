@@ -372,8 +372,13 @@ app.post("/tasks", verifyJWT, async (req, res) => {
 });
 
 // Read tasks and filter using query parameters
-async function readAllTasks(query) {
+async function readAllTasks(query, userId) {
   const filter = {};
+
+  // Dashboard: show only tasks assigned to the logged-in user
+  if (query.myTasks === "true") {
+    filter.owners = userId;
+  }
 
   if (query.status) filter.status = query.status;
   if (query.priority) filter.priority = query.priority;
@@ -408,6 +413,7 @@ async function readAllTasks(query) {
   if (query.tags) {
     const tagNames = query.tags.split(",").map((tag) => tag.trim());
     const tags = await Tag.find({ name: { $in: tagNames } });
+
     filter.tags = { $in: tags.map((tag) => tag._id) };
   }
 
@@ -426,11 +432,15 @@ async function readAllTasks(query) {
 
 app.get("/tasks", verifyJWT, async (req, res) => {
   try {
-    const tasks = await readAllTasks(req.query);
+    const tasks = await readAllTasks(req.query, req.user.userId);
+
     res.status(200).json(tasks);
   } catch (error) {
     console.log("Fetch tasks error:", error);
-    res.status(500).json({ message: "Failed to fetch tasks." });
+
+    res.status(500).json({
+      message: "Failed to fetch tasks.",
+    });
   }
 });
 
