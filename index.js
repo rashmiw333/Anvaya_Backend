@@ -159,6 +159,25 @@ app.get("/auth/me", verifyJWT, async (req, res) => {
   }
 });
 
+//===================================================
+// Get all users for task 
+app.get("/users", verifyJWT, async (req, res) => {
+  try {
+    const users = await User.find()
+      .select("name email")
+      .sort({ name: 1 });
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.log("Fetch users error:", error);
+
+    res.status(500).json({
+      message: "Failed to fetch users.",
+    });
+  }
+});
+
+
 // ==================== TEAM APIs ====================
 
 async function createTeam(newTeam) {
