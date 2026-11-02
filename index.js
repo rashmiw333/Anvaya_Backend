@@ -662,23 +662,39 @@ app.get("/report/closed-tasks", verifyJWT, async (req, res) => {
 
 // ==================== START SERVER ====================
 
-const PORT = process.env.PORT || 5000;
-
 async function startServer() {
   try {
     if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET is missing from .env");
+      throw new Error("JWT_SECRET is missing");
     }
 
     await initializeDatabase();
 
-    app.listen(PORT, () => {
-      console.log(`Workasana server running on port ${PORT}`);
-    });
+    console.log("Workasana database connected successfully");
   } catch (error) {
     console.log("Server startup error:", error.message);
-    process.exit(1);
+    throw error;
   }
 }
 
-startServer();
+const serverReady = startServer();
+
+app.get("/", async (req, res) => {
+  try {
+    await serverReady;
+    res.json({ message: "Workasana backend is running successfully!" });
+  } catch (error) {
+    res.status(500).json({ message: "Backend initialization failed." });
+  }
+});
+
+app.use(async (req, res, next) => {
+  try {
+    await serverReady;
+    next();
+  } catch (error) {
+    res.status(500).json({ message: "Backend initialization failed." });
+  }
+});
+
+module.exports = app;
