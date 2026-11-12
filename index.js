@@ -16,6 +16,20 @@ const Tag = require("./models/tag.model");
 const Task = require("./models/task.model");
 
 app.use(express.json());
+
+app.use(async (req, res, next) => {
+  try {
+    await initializeDatabase();
+    next();
+  } catch (error) {
+    console.error("Database unavailable:", error.message);
+
+    res.status(503).json({
+      message: "Database temporarily unavailable. Please try again.",
+    });
+  }
+});
+
 app.use(cors());
 
 // ==================== JWT====================
@@ -661,40 +675,29 @@ app.get("/report/closed-tasks", verifyJWT, async (req, res) => {
 });
 
 // ==================== START SERVER ====================
+const PORT = process.env.PORT || 5000;
 
-async function startServer() {
-  try {
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET is missing");
-    }
-
-    await initializeDatabase();
-
-    console.log("Workasana database connected successfully");
-  } catch (error) {
-    console.log("Server startup error:", error.message);
-    throw error;
-  }
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET is missing from environment variables");
 }
 
-const serverReady = startServer();
+// Start the HTTP server only when running locally.
+// Vercel handles incoming requests itself.
+if (!process.env.VERCEL) {
+  const startServer = async () => {
+    try {
+      await initializeDatabase();
 
-app.get("/", async (req, res) => {
-  try {
-    await serverReady;
-    res.json({ message: "Workasana backend is running successfully!" });
-  } catch (error) {
-    res.status(500).json({ message: "Backend initialization failed." });
-  }
-});
+      app.listen(PORT, () => {
+        console.log(`Workasana server running on port ${PORT}`);
+      });
+    } catch (error) {
+      console.error("Server startup error:", error.message);
+      process.exit(1);
+    }
+  };
 
-app.use(async (req, res, next) => {
-  try {
-    await serverReady;
-    next();
-  } catch (error) {
-    res.status(500).json({ message: "Backend initialization failed." });
-  }
-});
+  startServer();
+}
 
 module.exports = app;
