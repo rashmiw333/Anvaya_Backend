@@ -1,703 +1,564 @@
 const express = require("express");
-const cors = require("cors");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const mongoose = require("mongoose");
-require("dotenv").config();
-
 const app = express();
-
-const { initializeDatabase } = require("./db/db.connect");
-
-const User = require("./models/user.model");
-const Team = require("./models/team.model");
-const Project = require("./models/project.model");
+const cors = require("cors");
+const {initializeDatabase} = require("./db/db.connect");
+const SalesAgent = require("./models/salesAgent.model");
+const Lead = require("./models/lead.model");
+const Comment = require("./models/comment.model");
 const Tag = require("./models/tag.model");
-const Task = require("./models/task.model");
 
 app.use(express.json());
-
-app.use(async (req, res, next) => {
-  try {
-    await initializeDatabase();
-    next();
-  } catch (error) {
-    console.error("Database unavailable:", error.message);
-
-    res.status(503).json({
-      message: "Database temporarily unavailable. Please try again.",
-    });
-  }
-});
-
 app.use(cors());
 
-// ==================== JWT====================
+initializeDatabase();
 
-const verifyJWT = (req, res, next) => {
-  const token = req.headers["authorization"];
+//create agent
 
-  if (!token || !token.startsWith("Bearer ")) {
-    return res.status(401).json({
-      message: "No token provided.",
+async function createAgent(newAgent){
+    try{
+        const agent = new SalesAgent(newAgent);
+        const savedAgent = await agent.save();
+        return savedAgent;
+    }catch(error){
+        console.log("Failed to add Agent",error);
+        throw error;
+    }
+
+}
+
+//post api
+
+app.post("/api/agents",async(req,res)=>{
+    try {
+    const existingAgent = await SalesAgent.findOne({
+      email: req.body.email
     });
-  }
 
-  try {
-    const decodedToken = jwt.verify(
-      token.split(" ")[1],
-      process.env.JWT_SECRET
-    );
-
-    req.user = decodedToken;
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      message: "Invalid or expired token.",
-    });
-  }
-};
-
-// ==================== AUTHENTICATION ====================
-
-// Signup
-app.post("/auth/signup", async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
+    if (existingAgent) {
       return res.status(400).json({
-        message: "Name, email and password are required.",
+        error: "Email already exists."
       });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({
-        message: "Password must contain at least 8 characters.",
-      });
-    }
+    const agent = new SalesAgent(req.body);
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const savedAgent = await agent.save();
 
-    const existingUser = await User.findOne({
-      email: normalizedEmail,
-    });
-
-    if (existingUser) {
-      return res.status(409).json({
-        message: "Email already registered.",
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = await User.create({
-      name,
-      email: normalizedEmail,
-      password: hashedPassword,
-    });
-
-    res.status(201).json({
-      message: "Signup successful.",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+    return res.status(201).json({
+      message: "Agent added Successfully.",
+      agent: savedAgent
     });
   } catch (error) {
-    console.log("Signup error:", error);
+    console.log("Error creating agent:", error);
 
-    res.status(error.code === 11000 ? 409 : 500).json({
-      message: error.code === 11000
-        ? "Email already registered."
-        : "Failed to create account.",
+    return res.status(500).json({
+      error: "Failed to add Agent."
     });
   }
 });
 
-// Login and generate JWT
-app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        message: "Email and password are required.",
+
+//read agents data
+
+async function readAllAgents() {
+  try {
+    const agents = await SalesAgent.find();
+    return agents;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// call to get all
+
+app.get("/api/agents", async (req, res) => {
+  try {
+    const agents = await readAllAgents();
+
+    if (agents.length !== 0) {
+      res.json(agents);
+    } else {
+      res.status(404).json({error: "SalesAgent not found."});
+    }
+  } catch (error) {
+    res.status(500).json({error: "Error occurred while fetching salesAgents."});
+  }
+});
+
+
+//method to create lead
+
+async function createLead(newLead){
+    try{
+        const lead = new Lead(newLead);
+        const savedLead = await lead.save();
+        return savedLead;
+    }catch(error){
+        console.log("Failed to add Lead",error);
+    }
+
+}
+
+//post api
+
+app.post("/api/leads",async(req,res)=>{
+    try{
+      const savedLead = await createLead(req.body);
+      res.status(201).json({message:"Lead added Successfully.",savedLead});
+       }catch(error){
+        res.status(500).json({
+            error:"Failed to add Lead."
+        });
+    }
+});
+
+//read all leads
+
+async function readAllLeads() {
+  try {
+    const leads = await Lead.find().populate("salesAgent", "name");;
+    return leads;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// call to get all leads
+
+app.get("/api/leads", async (req, res) => {
+  try {
+    const leads = await readAllLeads();
+
+    if (leads.length !== 0) {
+      res.json(leads);
+    } else {
+      res.status(404).json({error: "Leads not found."});
+    }
+  } catch (error) {
+    res.status(500).json({error: "Error occurred while fetching Leads."});
+  }
+});
+
+//get api for getting lead by id
+
+async function readLeadById(leadId) {
+  try {
+    const lead = await Lead.findById(leadId)
+      .populate("salesAgent", "name");
+
+    return lead;
+  } catch (error) {
+    throw error;
+  }
+}
+
+app.get("/api/leads/:id", async (req, res) => {
+  try {
+
+    const lead = await readLeadById(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({
+        error: "Lead not found."
       });
     }
 
-    const user = await User.findOne({
-      email: email.trim().toLowerCase(),
+    res.status(200).json(lead);
+
+  } catch (error) {
+
+    res.status(500).json({
+      error: "Failed to fetch lead."
     });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({
-        message: "Invalid email or password.",
+  }
+});
+
+//update lead
+
+async function updateLead(leadId, updatedData) {
+  try {
+    const updatedLead = await Lead.findByIdAndUpdate(
+      leadId,
+      updatedData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return updatedLead;
+  } catch (error) {
+    console.log("Failed to update Lead:", error);
+    throw error;
+  }
+}
+
+//put api
+
+app.put("/api/leads/:id", async (req, res) => {
+  try {
+    const updatedLead = await updateLead(
+      req.params.id,
+      req.body
+    );
+
+    if (!updatedLead) {
+      return res.status(404).json({
+        error: "Lead not found",
       });
     }
-
-    const token = jwt.sign(
-      { userId: user._id.toString() },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" }
-    );
 
     res.status(200).json({
-      message: "Login successful.",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+      message: "Lead updated successfully",
+      lead: updatedLead,
     });
   } catch (error) {
-    console.log("Login error:", error);
-    res.status(500).json({ message: "Failed to login." });
-  }
-});
-
-// Get logged-in user
-app.get("/auth/me", verifyJWT, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select("-password");
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    res.json({ user });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch user." });
-  }
-});
-
-//===================================================
-// Get all users for task 
-app.get("/users", verifyJWT, async (req, res) => {
-  try {
-    const users = await User.find()
-      .select("name email")
-      .sort({ name: 1 });
-
-    res.status(200).json(users);
-  } catch (error) {
-    console.log("Fetch users error:", error);
-
     res.status(500).json({
-      message: "Failed to fetch users.",
+      error: "Failed to update Lead",
     });
   }
 });
 
+//delete
 
-// ==================== TEAM APIs ====================
+async function deleteLead(leadId) {
+  try {
+    const deletedLead = await Lead.findByIdAndDelete(leadId);
 
-async function createTeam(newTeam) {
-  const team = new Team(newTeam);
-  return await team.save();
+    return deletedLead;
+  } catch (error) {
+    console.log("Failed to delete lead:", error);
+    throw error;
+  }
 }
 
-app.post("/teams", verifyJWT, async (req, res) => {
+//delete api
+app.delete("/leads/:id", async (req, res) => {
   try {
-    if (!req.body.name) {
-      return res.status(400).json({ message: "Team name is required." });
+    const deletedLead = await deleteLead(req.params.id);
+
+    if (!deletedLead) {
+      return res.status(404).json({
+        error: "Lead not found",
+      });
     }
 
-    const existingTeam = await Team.findOne({
-      name: req.body.name.trim(),
+    res.status(200).json({
+      message: "Lead deleted successfully",
+      lead: deletedLead,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to delete lead",
+    });
+  }
+});
+
+//comment api
+
+async function createComment(leadId, newComment) {
+  try {
+    const comment = new Comment({
+      lead: leadId,
+      author: newComment.author,
+      commentText: newComment.commentText
     });
 
-    if (existingTeam) {
-      return res.status(409).json({ message: "Team already exists." });
+    const savedComment = await comment.save();
+
+    return savedComment;
+  } catch (error) {
+    throw error;
+  }
+}
+
+//post api
+
+app.post("/api/leads/:id/comments", async (req, res) => {
+  try {
+    const leadId = req.params.id;
+
+    // Check whether lead exists
+    const lead = await Lead.findById(leadId);
+
+    if (!lead) {
+      return res.status(404).json({
+        error: `Lead with ID '${leadId}' not found.`
+      });
     }
 
-    const team = await createTeam(req.body);
+    const savedComment = await createComment(leadId, req.body);
+
+     // Get the agent name
+    await savedComment.populate("author", "name");
 
     res.status(201).json({
-      message: "Team created successfully.",
-      team,
-    });
-  } catch (error) {
-    console.log("Create team error:", error);
-    res.status(500).json({ message: "Failed to create team." });
-  }
-});
-
-async function readAllTeams() {
-  return await Team.find().sort({ name: 1 });
-}
-
-app.get("/teams", verifyJWT, async (req, res) => {
-  try {
-    res.status(200).json(await readAllTeams());
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch teams." });
-  }
-});
-
-// ==================== PROJECT APIs ====================
-
-async function createProject(newProject) {
-  const project = new Project(newProject);
-  return await project.save();
-}
-
-app.post("/projects", verifyJWT, async (req, res) => {
-  try {
-    if (!req.body.name) {
-      return res.status(400).json({
-        message: "Project name is required.",
-      });
-    }
-
-    const project = await createProject(req.body);
-
-    res.status(201).json({
-      message: "Project created successfully.",
-      project,
-    });
-  } catch (error) {
-    console.log("Create project error:", error);
-    res.status(500).json({ message: "Failed to create project." });
-  }
-});
-
-async function readAllProjects() {
-  return await Project.find().sort({ name: 1 });
-}
-
-app.get("/projects", verifyJWT, async (req, res) => {
-  try {
-    res.status(200).json(await readAllProjects());
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch projects." });
-  }
-});
-
-// ==================== TAG APIs ====================
-
-async function createTag(newTag) {
-  const tag = new Tag(newTag);
-  return await tag.save();
-}
-
-app.post("/tags", verifyJWT, async (req, res) => {
-  try {
-    if (!req.body.name) {
-      return res.status(400).json({ message: "Tag name is required." });
-    }
-
-    const existingTag = await Tag.findOne({
-      name: req.body.name.trim(),
+      id: savedComment._id,
+      commentText: savedComment.commentText,
+      author: savedComment.author?.name || "Unknown",
+      createdAt: savedComment.createdAt
     });
 
-    if (existingTag) {
-      return res.status(409).json({ message: "Tag already exists." });
-    }
-
-    const tag = await createTag(req.body);
-
-    res.status(201).json({
-      message: "Tag created successfully.",
-      tag,
-    });
   } catch (error) {
-    console.log("Create tag error:", error);
-    res.status(500).json({ message: "Failed to create tag." });
-  }
-});
-
-async function readAllTags() {
-  return await Tag.find().sort({ name: 1 });
-}
-
-app.get("/tags", verifyJWT, async (req, res) => {
-  try {
-    res.status(200).json(await readAllTags());
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch tags." });
-  }
-});
-
-// ==================== TASK APIs ====================
-
-async function createTask(newTask) {
-  const task = new Task(newTask);
-  return await task.save();
-}
-
-app.post("/tasks", verifyJWT, async (req, res) => {
-  try {
-    const {
-      name, project, team, owners = [], tags = [],
-      timeToComplete, dueDate, status, priority,
-    } = req.body;
-
-    if (!name || !project || !team || timeToComplete == null) {
-      return res.status(400).json({
-        message: "Name, project, team and timeToComplete are required.",
-      });
-    }
-
-    if (!Number.isFinite(Number(timeToComplete)) || Number(timeToComplete) < 1) {
-      return res.status(400).json({
-        message: "timeToComplete must be at least 1.",
-      });
-    }
-
-    if (!mongoose.isValidObjectId(project) ||
-        !mongoose.isValidObjectId(team)) {
-      return res.status(400).json({
-        message: "Invalid project or team ID.",
-      });
-    }
-
-    const [projectExists, teamExists] = await Promise.all([
-      Project.exists({ _id: project }),
-      Team.exists({ _id: team }),
-    ]);
-
-    if (!projectExists || !teamExists) {
-      return res.status(400).json({
-        message: "Project or team does not exist.",
-      });
-    }
-
-    const validOwners = owners.every(mongoose.isValidObjectId);
-    const validTags = tags.every(mongoose.isValidObjectId);
-
-    if (!validOwners || !validTags) {
-      return res.status(400).json({
-        message: "Invalid owner or tag ID.",
-      });
-    }
-
-    const task = await createTask({
-      name,
-      project,
-      team,
-      owners,
-      tags,
-      timeToComplete: Number(timeToComplete),
-      dueDate,
-      status,
-      priority,
-      completedAt: status === "Completed" ? new Date() : null,
-      createdBy: req.user.userId,
-    });
-
-    const savedTask = await Task.findById(task._id)
-      .populate("project", "name")
-      .populate("team", "name")
-      .populate("owners", "name email")
-      .populate("tags", "name");
-
-    res.status(201).json({
-      message: "Task created successfully.",
-      task: savedTask,
-    });
-  } catch (error) {
-    console.log("Create task error:", error);
-    res.status(500).json({ message: "Failed to create task." });
-  }
-});
-
-// Read tasks and filter using query parameters
-async function readAllTasks(query, userId) {
-  const filter = {};
-
-  // Dashboard: show only tasks assigned to the logged-in user
-  if (query.myTasks === "true") {
-    filter.owners = userId;
-  }
-
-  if (query.status) filter.status = query.status;
-  if (query.priority) filter.priority = query.priority;
-
-  if (query.team) {
-    if (mongoose.isValidObjectId(query.team)) {
-      filter.team = query.team;
-    } else {
-      const team = await Team.findOne({ name: query.team });
-      filter.team = team ? team._id : null;
-    }
-  }
-
-  if (query.project) {
-    if (mongoose.isValidObjectId(query.project)) {
-      filter.project = query.project;
-    } else {
-      const project = await Project.findOne({ name: query.project });
-      filter.project = project ? project._id : null;
-    }
-  }
-
-  if (query.owner) {
-    if (mongoose.isValidObjectId(query.owner)) {
-      filter.owners = query.owner;
-    } else {
-      const owner = await User.findOne({ name: query.owner });
-      filter.owners = owner ? owner._id : null;
-    }
-  }
-
-  if (query.tags) {
-    const tagNames = query.tags.split(",").map((tag) => tag.trim());
-    const tags = await Tag.find({ name: { $in: tagNames } });
-
-    filter.tags = { $in: tags.map((tag) => tag._id) };
-  }
-
-  let sortOption = { createdAt: -1 };
-
-  if (query.sort === "dueDate") sortOption = { dueDate: 1 };
-  if (query.sort === "priority") sortOption = { priority: -1 };
-
-  return await Task.find(filter)
-    .populate("project", "name")
-    .populate("team", "name")
-    .populate("owners", "name email")
-    .populate("tags", "name")
-    .sort(sortOption);
-}
-
-app.get("/tasks", verifyJWT, async (req, res) => {
-  try {
-    const tasks = await readAllTasks(req.query, req.user.userId);
-
-    res.status(200).json(tasks);
-  } catch (error) {
-    console.log("Fetch tasks error:", error);
+    console.log("Failed to add comment", error);
 
     res.status(500).json({
-      message: "Failed to fetch tasks.",
+      error: "Failed to add comment."
     });
   }
 });
 
-// Read task by ID
-app.get("/tasks/:id", verifyJWT, async (req, res) => {
+//get comment method and api
+
+async function getCommentsByLead(leadId) {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid task ID." });
-    }
+    const comments = await Comment.find({ lead: leadId })
+      .populate("author", "name")
+      .sort({ createdAt: 1 });
 
-    const task = await Task.findById(req.params.id)
-      .populate("project", "name")
-      .populate("team", "name")
-      .populate("owners", "name email")
-      .populate("tags", "name");
-
-    if (!task) {
-      return res.status(404).json({ message: "Task not found." });
-    }
-
-    res.json(task);
+    return comments;
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch task." });
+    throw error;
   }
-});
-
-// Update task
-async function updateTask(taskId, updatedData) {
-  const allowedFields = [
-    "name", "project", "team", "owners", "tags",
-    "timeToComplete", "dueDate", "status", "priority",
-  ];
-
-  const updates = {};
-
-  allowedFields.forEach((field) => {
-    if (updatedData[field] !== undefined) {
-      updates[field] = updatedData[field];
-    }
-  });
-
-  if (updates.status === "Completed") {
-    updates.completedAt = new Date();
-  } else if (updates.status) {
-    updates.completedAt = null;
-  }
-
-  return await Task.findByIdAndUpdate(taskId, updates, {
-    new: true,
-    runValidators: true,
-  })
-    .populate("project", "name")
-    .populate("team", "name")
-    .populate("owners", "name email")
-    .populate("tags", "name");
 }
 
-app.put("/tasks/:id", verifyJWT, async (req, res) => {
+app.get("/api/leads/:id/comments", async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid task ID." });
-    }
+    const leadId = req.params.id;
+    const lead = await Lead.findById(leadId);
 
-    const task = await updateTask(req.params.id, req.body);
-
-    if (!task) {
-      return res.status(404).json({ message: "Task not found." });
-    }
-
-    res.json({ message: "Task updated successfully.", task });
-  } catch (error) {
-    console.log("Update task error:", error);
-    res.status(500).json({ message: "Failed to update task." });
-  }
-});
-
-// Delete task
-async function deleteTask(taskId) {
-  return await Task.findByIdAndDelete(taskId);
-}
-
-app.delete("/tasks/:id", verifyJWT, async (req, res) => {
-  try {
-    if (!mongoose.isValidObjectId(req.params.id)) {
-      return res.status(400).json({ message: "Invalid task ID." });
-    }
-
-    const task = await deleteTask(req.params.id);
-
-    if (!task) {
-      return res.status(404).json({ message: "Task not found." });
-    }
-
-    res.json({ message: "Task deleted successfully.", task });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to delete task." });
-  }
-});
-
-// ==================== REPORT APIs ====================
-
-// Tasks completed during the last 7 days
-async function getTasksCompletedLastWeek() {
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  return await Task.find({
-    status: "Completed",
-    completedAt: { $gte: sevenDaysAgo },
-  })
-    .populate("team", "name")
-    .populate("project", "name")
-    .populate("owners", "name");
-}
-
-app.get("/report/last-week", verifyJWT, async (req, res) => {
-  try {
-    const tasks = await getTasksCompletedLastWeek();
-
-    res.json({
-      totalCompleted: tasks.length,
-      tasks,
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch last-week report.",
-    });
-  }
-});
-
-// Sum of estimated days for tasks not completed
-async function getTotalPendingDays() {
-  const result = await Task.aggregate([
-    { $match: { status: { $ne: "Completed" } } },
-    {
-      $group: {
-        _id: null,
-        totalPendingDays: { $sum: "$timeToComplete" },
-        totalPendingTasks: { $sum: 1 },
-      },
-    },
-  ]);
-
-  return result[0] || {
-    totalPendingDays: 0,
-    totalPendingTasks: 0,
-  };
-}
-
-app.get("/report/pending", verifyJWT, async (req, res) => {
-  try {
-    res.json(await getTotalPendingDays());
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch pending report.",
-    });
-  }
-});
-
-// Completed tasks grouped by team, owner and project
-async function getClosedTaskReport() {
-  const tasks = await Task.find({ status: "Completed" })
-    .populate("team", "name")
-    .populate("project", "name")
-    .populate("owners", "name");
-
-  const result = {
-    totalClosedTasks: tasks.length,
-    byTeam: {},
-    byOwner: {},
-    byProject: {},
-  };
-
-  tasks.forEach((task) => {
-    const teamName = task.team?.name || "Unknown";
-    const projectName = task.project?.name || "Unknown";
-
-    result.byTeam[teamName] = (result.byTeam[teamName] || 0) + 1;
-    result.byProject[projectName] =
-      (result.byProject[projectName] || 0) + 1;
-
-    task.owners.forEach((owner) => {
-      result.byOwner[owner.name] =
-        (result.byOwner[owner.name] || 0) + 1;
-    });
-  });
-
-  return result;
-}
-
-app.get("/report/closed-tasks", verifyJWT, async (req, res) => {
-  try {
-    res.json(await getClosedTaskReport());
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to fetch closed-task report.",
-    });
-  }
-});
-
-// ==================== START SERVER ====================
-const PORT = process.env.PORT || 5000;
-
-if (!process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET is missing from environment variables");
-}
-
-// Start the HTTP server only when running locally.
-// Vercel handles incoming requests itself.
-if (!process.env.VERCEL) {
-  const startServer = async () => {
-    try {
-      await initializeDatabase();
-
-      app.listen(PORT, () => {
-        console.log(`Workasana server running on port ${PORT}`);
+    if (!lead) {
+      return res.status(404).json({
+        error: `Lead with ID '${leadId}' not found.`
       });
-    } catch (error) {
-      console.error("Server startup error:", error.message);
-      process.exit(1);
     }
-  };
 
-  startServer();
+    const comments = await getCommentsByLead(leadId);
+
+    const result = comments.map((comment) => ({
+      id: comment._id,
+      commentText: comment.commentText,
+      author: comment.author?.name || "Unknown",
+      createdAt: comment.createdAt
+    }));
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log("Failed to fetch comments", error);
+
+    res.status(500).json({
+      error: "Failed to fetch comments."
+    });
+  }
+});
+
+//report method and api
+
+async function getLeadsClosedLastWeek() {
+  try {
+    const sevenDaysAgo = new Date();
+
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const leads = await Lead.find({
+      status: "Closed",
+      closedAt: {
+        $gte: sevenDaysAgo
+      }
+    }).populate("salesAgent", "name");
+
+    return leads;
+  } catch (error) {
+    throw error;
+  }
 }
 
-module.exports = app;
+app.get("/api/report/last-week", async (req, res) => {
+  try {
+    const leads = await getLeadsClosedLastWeek();
+
+    const result = leads.map((lead) => ({
+      id: lead._id,
+      name: lead.name,
+      salesAgent: lead.salesAgent
+        ? lead.salesAgent.name
+        : "Unknown",
+      closedAt: lead.closedAt
+    }));
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log("Failed to fetch leads closed last week", error);
+
+    res.status(500).json({
+      error: "Failed to fetch leads closed last week."
+    });
+  }
+});
+
+//Get Total Leads in Pipeline
+
+async function getTotalLeadsInPipeline() {
+  try {
+    const totalLeadsInPipeline = await Lead.countDocuments({
+      status: { $ne: "Closed" }
+    });
+
+    return totalLeadsInPipeline;
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/pipeline", async (req, res) => {
+  try {
+    const totalLeadsInPipeline = await getTotalLeadsInPipeline();
+
+    res.status(200).json({
+      totalLeadsInPipeline
+    });
+
+  } catch (error) {
+    console.log("Failed to fetch pipeline report", error);
+
+    res.status(500).json({
+      error: "Failed to fetch pipeline report."
+    });
+  }
+});
+
+// Get Total Closed Leads method and api changes
+
+async function getTotalClosedLeads() {
+  try {
+    const totalClosedLeads = await Lead.countDocuments({
+      status: "Closed"
+    });
+
+    return totalClosedLeads;
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/closed", async (req, res) => {
+  try {
+    const totalClosedLeads = await getTotalClosedLeads();
+
+    res.status(200).json({
+      totalClosedLeads
+    });
+
+  } catch (error) {
+    console.log("Failed to fetch closed leads", error);
+
+    res.status(500).json({
+      error: "Failed to fetch closed leads."
+    });
+  }
+});
+
+// Get Leads Closed by Sales Agent -> method and api
+
+async function getLeadsClosedBySalesAgent() {
+  try {
+    const leads = await Lead.find({
+      status: "Closed"
+    }).populate("salesAgent", "name");
+
+    const result = {};
+
+    leads.forEach((lead) => {
+
+      const agentName = lead.salesAgent
+        ? lead.salesAgent.name
+        : "Unknown";
+
+      if (result[agentName]) {
+        result[agentName] += 1;
+      } else {
+        result[agentName] = 1;
+      }
+
+    });
+
+    return result;
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/closed-by-agent", async (req, res) => {
+  try {
+    const result = await getLeadsClosedBySalesAgent();
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log(
+      "Failed to fetch leads closed by sales agent",
+      error
+    );
+
+    res.status(500).json({
+      error: "Failed to fetch leads closed by sales agent."
+    });
+  }
+});
+
+// Get Lead Status Distribution -> method + api changes
+
+async function getLeadStatusDistribution() {
+  try {
+    const leads = await Lead.find();
+
+    const result = {};
+
+    leads.forEach((lead) => {
+
+      if (result[lead.status]) {
+        result[lead.status] += 1;
+      } else {
+        result[lead.status] = 1;
+      }
+
+    });
+
+    return result;
+
+  } catch (error) {
+    throw error;
+  }
+}
+
+
+app.get("/api/report/status-distribution", async (req, res) => {
+  try {
+    const result = await getLeadStatusDistribution();
+
+    res.status(200).json(result);
+
+  } catch (error) {
+    console.log(
+      "Failed to fetch lead status distribution",
+      error
+    );
+
+    res.status(500).json({
+      error: "Failed to fetch lead status distribution."
+    });
+  }
+});
+
+const PORT= 3000;
+app.listen(PORT,()=>{
+    console.log(`Server Started on ${PORT}`);
+});

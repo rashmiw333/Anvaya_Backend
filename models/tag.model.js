@@ -1,16 +1,17 @@
+const mongoose = require('mongoose');
 
-const mongoose = require("mongoose");
-
-const tagSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
+// Tag Schema
+const tagSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Tag name is required'],
+    unique: true,  // Ensures that each tag name is unique
   },
-  { timestamps: true }
-);
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  }
+});
 
-module.exports = mongoose.model("Tag", tagSchema);
+module.exports = mongoose.model('Tag', tagSchema);
+
